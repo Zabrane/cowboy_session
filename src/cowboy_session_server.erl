@@ -62,13 +62,11 @@ init(Config) ->
 	{_, Storage} = lists:keyfind(storage, 1, Config),
 	Storage:new(SID),
 	gproc:add_local_name({cowboy_session, SID}),
-	{ok, Expire_TRef} = timer:exit_after(Expire * 1000, expire),
 	{ok, #state{
 		sid = SID,
 		expire = Expire,
-		expire_tref = Expire_TRef,
 		storage = Storage
-	}}.
+	}, timer:seconds(Expire)}.
 
 
 handle_call({get, Key, Default}, _From, #state{sid = SID, storage = Storage} = State) ->
@@ -85,19 +83,19 @@ handle_cast({set, Key, Value}, #state{sid = SID, storage = Storage} = State) ->
 	ok = Storage:set(SID, Key, Value),
 	{noreply, State};
 
-handle_cast(touch, #state{expire = Expire, expire_tref = Expire_TRef} = State) ->
-	{ok, cancel} = timer:cancel(Expire_TRef),
-	{ok, New_TRef} = timer:exit_after(Expire * 1000, expire),
-	{noreply, State#state{expire_tref = New_TRef}};
+handle_cast(touch, #state{expire = Expire} = State) ->
+	{noreply, State, timer:seconds(Expire)};
 
-handle_cast(stop, #state{expire_tref = Expire_TRef} = State) ->
-	timer:cancel(Expire_TRef),
-	{stop, normal, State#state{expire_tref = nil}};
+handle_cast(stop, State) ->
+	{stop, normal, State};
 
 handle_cast(_, State) -> {noreply, State}.
 
+handle_info(timeout, State) ->
+	{stop, normal, State};
 
-handle_info(_, State) -> {noreply, State}.
+handle_info(_, State) ->
+	{noreply, State}.
 
 
 terminate(_Reason, #state{storage = Storage, sid = SID}) ->
