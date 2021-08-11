@@ -25,3 +25,5 @@
 %% ===================================================================
 
 -define(CONFIG(Key, Default), application:get_env(cowboy_session, Key, Default)).
+
+-define(SESSION_SERVER_ID(SID), {cowboy_session, SID}).

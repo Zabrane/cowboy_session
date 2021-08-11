@@ -8,6 +8,7 @@
 	stop/1,
 	get/3,
 	set/3,
+	delete/2,
 	sid/1
 ]).
 
@@ -21,6 +22,8 @@
 	terminate/2,
 	code_change/3
 ]).
+
+-include("cowboy_session_config.hrl").
 
 -record(state, {
 	sid,
@@ -42,6 +45,9 @@ touch(Pid) ->
 set(Pid, Key, Value) ->
 	gen_server:cast(Pid, {set, Key, Value}).
 
+delete(Pid, Key) ->
+	gen_server:cast(Pid, {delete, Key}).
+
 get(Pid, Key, Default) ->
 	gen_server:call(Pid, {get, Key, Default}).
 
@@ -61,14 +67,12 @@ init(Config) ->
 	{_, Expire} = lists:keyfind(expire, 1, Config),
 	{_, Storage} = lists:keyfind(storage, 1, Config),
 	Storage:new(SID),
-	gproc:add_local_name({cowboy_session, SID}),
-	{ok, Expire_TRef} = timer:exit_after(Expire * 1000, expire),
+	gproc:add_local_name(?SESSION_SERVER_ID(SID)),
 	{ok, #state{
 		sid = SID,
 		expire = Expire,
-		expire_tref = Expire_TRef,
 		storage = Storage
-	}}.
+	}, timer:seconds(Expire)}.
 
 
 handle_call({get, Key, Default}, _From, #state{sid = SID, storage = Storage} = State) ->
@@ -85,19 +89,23 @@ handle_cast({set, Key, Value}, #state{sid = SID, storage = Storage} = State) ->
 	ok = Storage:set(SID, Key, Value),
 	{noreply, State};
 
-handle_cast(touch, #state{expire = Expire, expire_tref = Expire_TRef} = State) ->
-	{ok, cancel} = timer:cancel(Expire_TRef),
-	{ok, New_TRef} = timer:exit_after(Expire * 1000, expire),
-	{noreply, State#state{expire_tref = New_TRef}};
+handle_cast({delete, Key}, #state{sid = SID, storage = Storage} = State) ->
+	ok = Storage:delete(SID, Key),
+	{noreply, State};
 
-handle_cast(stop, #state{expire_tref = Expire_TRef} = State) ->
-	timer:cancel(Expire_TRef),
-	{stop, normal, State#state{expire_tref = nil}};
+handle_cast(touch, #state{expire = Expire} = State) ->
+	{noreply, State, timer:seconds(Expire)};
+
+handle_cast(stop, State) ->
+	{stop, normal, State};
 
 handle_cast(_, State) -> {noreply, State}.
 
+handle_info(timeout, State) ->
+	{stop, normal, State};
 
-handle_info(_, State) -> {noreply, State}.
+handle_info(_, State) ->
+	{noreply, State}.
 
 
 terminate(_Reason, #state{storage = Storage, sid = SID}) ->
