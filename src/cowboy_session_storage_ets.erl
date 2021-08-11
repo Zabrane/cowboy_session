@@ -9,6 +9,7 @@
 	set/3,
 	get/3,
 	delete/1,
+	delete/2,
 	stop/1
 ]).
 
@@ -43,6 +44,9 @@ get(SID, Key, Default) ->
 
 delete(SID) ->
 	gen_server:cast(?MODULE, {delete, SID}).
+
+delete(SID, Key) ->
+	gen_server:cast(?MODULE, {delete, SID, Key}).
 
 stop(New_storage) ->
 	gen_server:cast(?MODULE, {stop, New_storage}).
@@ -83,6 +87,17 @@ handle_cast({set, SID, Key, Value}, State) ->
 
 handle_cast({delete, SID}, State) ->
 	ets:delete(?TABLE, SID),
+	{noreply, State};
+
+handle_cast({delete, SID, Key}, State) ->
+	[{SID, Data0}] = ets:lookup(?TABLE, SID),
+	case lists:keyfind(Key, 1, Data0) of
+		false ->
+			ignore;
+		Elem ->
+			Data1 = lists:delete(Elem, Data0),
+			ets:insert(?TABLE, {SID, Data1})
+	end,
 	{noreply, State};
 
 handle_cast({stop, _New_storage}, State) ->

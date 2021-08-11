@@ -8,6 +8,7 @@
 	stop/1,
 	get/3,
 	set/3,
+	delete/2,
 	sid/1
 ]).
 
@@ -21,6 +22,8 @@
 	terminate/2,
 	code_change/3
 ]).
+
+-include("cowboy_session_config.hrl").
 
 -record(state, {
 	sid,
@@ -42,6 +45,9 @@ touch(Pid) ->
 set(Pid, Key, Value) ->
 	gen_server:cast(Pid, {set, Key, Value}).
 
+delete(Pid, Key) ->
+	gen_server:cast(Pid, {delete, Key}).
+
 get(Pid, Key, Default) ->
 	gen_server:call(Pid, {get, Key, Default}).
 
@@ -61,7 +67,7 @@ init(Config) ->
 	{_, Expire} = lists:keyfind(expire, 1, Config),
 	{_, Storage} = lists:keyfind(storage, 1, Config),
 	Storage:new(SID),
-	gproc:add_local_name({cowboy_session, SID}),
+	gproc:add_local_name(?SESSION_SERVER_ID(SID)),
 	{ok, #state{
 		sid = SID,
 		expire = Expire,
@@ -81,6 +87,10 @@ handle_call(_, _, State) -> {reply, ignored, State}.
 
 handle_cast({set, Key, Value}, #state{sid = SID, storage = Storage} = State) ->
 	ok = Storage:set(SID, Key, Value),
+	{noreply, State};
+
+handle_cast({delete, Key}, #state{sid = SID, storage = Storage} = State) ->
+	ok = Storage:delete(SID, Key),
 	{noreply, State};
 
 handle_cast(touch, #state{expire = Expire} = State) ->

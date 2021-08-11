@@ -21,5 +21,9 @@
 -callback delete(SID) -> ok when
 	SID :: bitstring().
 
+-callback delete(SID, Key) -> ok when
+	SID :: bitstring(),
+	Key :: term().
+
 -callback stop(New_storage) -> ok when
 	New_storage :: pid().
